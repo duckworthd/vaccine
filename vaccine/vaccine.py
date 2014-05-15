@@ -1,58 +1,16 @@
 """
-A simple dependency injection service
-
-Usage:
-
-  i = Vaccine()
-
-
-  # you can use classes as keys
-  class SomeServiceInterface(object):
-    pass
-
-
-  # register this class as providing for some interface and requiring some
-  # dependencies (this time, keyed on strings)
-  @i.provides(SomeServiceInterface)
-  @i.requires(host="HOST", credentials="CREDENTIALS")
-  class SomeService(SomeServiceInterface):
-
-    def __init__(self, host, credentials):
-      print '<SomeService>'
-      self.host = host
-      self.credentials =  credentials
-
-    def hello_world(self):
-      print "Logging into: {}".format(self.host)
-      print "Username: {}".format(self.credentials['user'])
-      print "Password: {}".format(self.credentials['password'])
-
-
-  # you can also annotate functions with `provides` and `requires`
-  @i.provides("CREDENTIALS")
-  def credentials():
-    print '<credentials>'
-    import os
-    return {"user": os.environ["USER"], "password": "XXXX"}
-
-  # rather than registering a providing function/class, you can register
-  # already-instantiated values directly
-  i.register("HOST", "localhost")
-
-
-  # manually retrieving an instantiation is as sample as calling `get`. All
-  # dependencies will be handled automatically.
-  service = i.get(SomeServiceInterface)
-  service.hello_world()
+A simple dependency injection service.
 """
 import inspect
+import types
 
-
-class VaccineException(Exception):
-  pass
+from .exceptions import VaccineException
 
 
 class Vaccine(object):
+  """
+  Create a new dependency injection environment.
+  """
 
   def __init__(self):
     self.registry = {}
@@ -62,7 +20,7 @@ class Vaccine(object):
     if key not in self.registry:
       raise VaccineException(
         ("The key '{}' was not registered to a value or a"
-         " constructor").format(key)
+         " class").format(key)
       )
     v, evaluated = self.registry[key]
     if not evaluated:
@@ -70,16 +28,17 @@ class Vaccine(object):
     return self.registry[key][0]
 
   def requires(self, **bindings):
-    """Bind function/class constructor arguments to keys this Vaccine will provide values for"""
+    """Bind function/class constructor arguments to keys this Vaccine will
+    provide values for"""
     def decorator(func):
 
       # get argument names
-      if isinstance(type(func), type):
-        argnames = inspect.getargspec(func.__init__).args[1:]
-        defaults = inspect.getargspec(func.__init__).defaults or []
-      else:
+      if isinstance(func, types.FunctionType):
         argnames = inspect.getargspec(func).args
         defaults = inspect.getargspec(func).defaults or []
+      else:
+        argnames = inspect.getargspec(func.__init__).args[1:]
+        defaults = inspect.getargspec(func.__init__).defaults or []
 
       def decorated(*args, **kwargs):
         a = {}
@@ -122,10 +81,18 @@ class Vaccine(object):
     return decorator
 
   def register(self, key, value):
-    """Registry an already-built value"""
+    """Registry an already-resolved value"""
     if key in self.registry:
       raise VaccineException(
         "'{}' is already registered to '{}'".format(key,
         self.registry[key][0])
       )
     self.registry[key] = (value, True)
+
+  def unregister(self, key):
+    """
+    Unregister a dependency. If no dependency is registered under the given
+    key, does nothing.
+    """
+    if key in self.registry:
+      del self.registry[key]
